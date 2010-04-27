@@ -6,6 +6,8 @@ describe CarrierWave::Storage::GridFS do
 
   before do
     @database = Mongo::Connection.new('localhost', 27017).db('carrierwave_test')
+    @grid_fs = Mongo::GridFileSystem.new(@database)
+
     @uploader = mock('an uploader')
     @uploader.stub!(:grid_fs_database).and_return("carrierwave_test")
     @uploader.stub!(:grid_fs_host).and_return("localhost")
@@ -19,7 +21,7 @@ describe CarrierWave::Storage::GridFS do
   end
   
   after do
-    GridFS::GridStore.unlink(@database, 'uploads/bar.txt')
+    @grid_fs.unlink('uploads/bar.txt')
   end
 
   describe '#store!' do
@@ -29,7 +31,9 @@ describe CarrierWave::Storage::GridFS do
     end
     
     it "should upload the file to gridfs" do
-      GridFS::GridStore.read(@database, 'uploads/bar.txt').should == 'this is stuff'
+      @grid_fs.open('uploads/bar.txt', 'r') do |f|
+        f.read.should == 'this is stuff'
+      end
     end
     
     it "should not have a path" do
@@ -42,7 +46,10 @@ describe CarrierWave::Storage::GridFS do
     
     it "should be deletable" do
       @grid_fs_file.delete
-      GridFS::GridStore.read(@database, 'uploads/bar.txt').should == ''
+
+      expect {
+        @grid_fs.open('uploads/bar.txt', 'r')
+      }.to raise_error(Mongo::GridFileNotFound)
     end
     
     it "should store the content type on GridFS" do
@@ -52,13 +59,13 @@ describe CarrierWave::Storage::GridFS do
   
   describe '#retrieve!' do
     before do
-      GridFS::GridStore.open(@database, 'uploads/bar.txt', 'w') { |f| f.puts "A test, 1234" }
+      @grid_fs.open('uploads/bar.txt', 'w') { |f| f.write "A test, 1234" }
       @uploader.stub!(:store_path).with('bar.txt').and_return('uploads/bar.txt')
       @grid_fs_file = @storage.retrieve!('bar.txt')
     end
 
     it "should retrieve the file contents from gridfs" do
-      @grid_fs_file.read.chomp.should == "A test, 1234"
+      @grid_fs_file.read.should == "A test, 1234"
     end
     
     it "should not have a path" do
@@ -76,7 +83,10 @@ describe CarrierWave::Storage::GridFS do
     
     it "should be deletable" do
       @grid_fs_file.delete
-      GridFS::GridStore.read(@database, 'uploads/bar.txt').should == ''
+
+      expect {
+        @grid_fs.open('uploads/bar.txt', 'r')
+      }.to raise_error(Mongo::GridFileNotFound)
     end
   end
 
